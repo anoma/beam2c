@@ -67,7 +67,7 @@ defmodule Beam2c do
 
   def label_arity({_module, _function, arity}), do: arity
 
-  def labbel_arity({:extfunc, _module, _function, arity}), do: arity
+  def label_arity({:extfunc, _module, _function, arity}), do: arity
 
   def compile_goto({:f, 0}), do: {:expr_stmt, {:call_expr, {:symbol_expr, "abort"}, []}}
 
