@@ -1,6 +1,6 @@
-defmodule Ex2c do
+defmodule Beam2c do
   @moduledoc """
-  Documentation for `Ex2c`.
+  Documentation for `Beam2c`.
   """
 
   import Bitwise
@@ -49,7 +49,7 @@ defmodule Ex2c do
     cparams =
       [{:literal_expr, tuple_size(tuple)},
        {:compound_literal_expr, "struct term []",
-        Enum.map(Tuple.to_list(tuple), fn x -> {:expr_initializer, Ex2c.compile_literal(x)} end)}]
+        Enum.map(Tuple.to_list(tuple), fn x -> {:expr_initializer, Beam2c.compile_literal(x)} end)}]
     {:call_expr, {:symbol_expr, "make_tuple"}, cparams}
   end
 
@@ -92,8 +92,8 @@ defmodule Ex2c do
   def compile_literal(x) when is_map(x) do
     {:call_expr, {:symbol_expr, "put_map_assoc_nofail"}, [
     compile_literal(%{}),
-    {:compound_literal_expr, "struct term []", Enum.map(Map.keys(x), fn x -> {:expr_initializer, Ex2c.compile_literal(x)} end)},
-    {:compound_literal_expr, "struct term []", Enum.map(Map.values(x), fn x -> {:expr_initializer, Ex2c.compile_literal(x)} end)},
+    {:compound_literal_expr, "struct term []", Enum.map(Map.keys(x), fn x -> {:expr_initializer, Beam2c.compile_literal(x)} end)},
+    {:compound_literal_expr, "struct term []", Enum.map(Map.values(x), fn x -> {:expr_initializer, Beam2c.compile_literal(x)} end)},
     {:literal_expr, map_size(x)}]}
   end
 
@@ -150,7 +150,7 @@ defmodule Ex2c do
 
   def compile_code(code = {:test, name, label, arguments}, state = %__MODULE__{}) do
     {[{:comment_stmt, Kernel.inspect(code)},
-     {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, Atom.to_string(name)}, Enum.map(arguments, &Ex2c.compile_operand/1)}},
+     {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, Atom.to_string(name)}, Enum.map(arguments, &Beam2c.compile_operand/1)}},
       [compile_goto(label)], []}], state}
   end
 
@@ -159,7 +159,7 @@ defmodule Ex2c do
       {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, Atom.to_string(name)}, [
        compile_operand(src),
        {:literal_expr, length(arguments)},
-       {:compound_literal_expr, "struct term []", Enum.map(arguments, fn x -> {:expr_initializer, Ex2c.compile_operand(x)} end)}]}},
+       {:compound_literal_expr, "struct term []", Enum.map(arguments, fn x -> {:expr_initializer, Beam2c.compile_operand(x)} end)}]}},
       [compile_goto(label)], []}], state}
   end
 
@@ -246,13 +246,13 @@ defmodule Ex2c do
 
   def compile_code(code = {:gc_bif, name, label, _live, arguments, reg}, state = %__MODULE__{}) do
     {[{:comment_stmt, Kernel.inspect(code)},
-     {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, bif_name_to_c(name)}, Enum.map(arguments, &Ex2c.compile_operand/1) ++ [{:address_of_expr, compile_operand(reg)}]}},
+     {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, bif_name_to_c(name)}, Enum.map(arguments, &Beam2c.compile_operand/1) ++ [{:address_of_expr, compile_operand(reg)}]}},
       [compile_goto(label)], []}], state}
   end
 
   def compile_code(code = {:bif, name, label, arguments, reg}, state = %__MODULE__{}) do
     {[{:comment_stmt, Kernel.inspect(code)},
-     {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, bif_name_to_c(name)}, Enum.map(arguments, &Ex2c.compile_operand/1) ++ [{:address_of_expr, compile_operand(reg)}]}},
+     {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, bif_name_to_c(name)}, Enum.map(arguments, &Beam2c.compile_operand/1) ++ [{:address_of_expr, compile_operand(reg)}]}},
       [compile_goto(label)], []}], state}
   end
 
@@ -363,8 +363,8 @@ defmodule Ex2c do
       {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, "put_map_assoc"}, [
        compile_operand(src),
        {:address_of_expr, compile_operand(dest)},
-       {:compound_literal_expr, "struct term []", Enum.map(keys, fn x -> {:expr_initializer, Ex2c.compile_operand(x)} end)},
-       {:compound_literal_expr, "struct term []", Enum.map(values, fn x -> {:expr_initializer, Ex2c.compile_operand(x)} end)},
+       {:compound_literal_expr, "struct term []", Enum.map(keys, fn x -> {:expr_initializer, Beam2c.compile_operand(x)} end)},
+       {:compound_literal_expr, "struct term []", Enum.map(values, fn x -> {:expr_initializer, Beam2c.compile_operand(x)} end)},
        {:literal_expr, length(keys)}]}},
        [compile_goto(label)], []}], state}
   end
@@ -377,12 +377,12 @@ defmodule Ex2c do
 
   def compile_code(code = {:case_end, op}, state = %__MODULE__{}) do
     {[{:comment_stmt, Kernel.inspect(code)},
-      {:expr_stmt, {:call_expr, {:symbol_expr, "case_end"}, [Ex2c.compile_operand(op)]}}], state}
+      {:expr_stmt, {:call_expr, {:symbol_expr, "case_end"}, [Beam2c.compile_operand(op)]}}], state}
   end
 
   def compile_code(code = {:badmatch, op}, state = %__MODULE__{}) do
     {[{:comment_stmt, Kernel.inspect(code)},
-      {:expr_stmt, {:call_expr, {:symbol_expr, "badmatch"}, [Ex2c.compile_operand(op)]}}], state}
+      {:expr_stmt, {:call_expr, {:symbol_expr, "badmatch"}, [Beam2c.compile_operand(op)]}}], state}
   end
 
   def emit_declaration(state = %__MODULE__{}, statement) do
@@ -394,7 +394,7 @@ defmodule Ex2c do
       {:function_declarator,
        {:identifier_declarator, compile_label({module, name, arity})}, []}
     cfunc_type = {:type_name, "struct term", cfunc_decl}
-    {cfunc_body, state} = Enum.flat_map_reduce(code, state, &Ex2c.compile_code/2)
+    {cfunc_body, state} = Enum.flat_map_reduce(code, state, &Beam2c.compile_code/2)
     state = emit_declaration(state, {:declaration_stmt, "struct term", [{cfunc_decl, nil}]})
     {[{:comment_stmt, Kernel.inspect({:function, name, arity, entry, []})},
      {:function_stmt, specifier(cfunc_type), cfunc_decl, cfunc_body}], state}
@@ -403,9 +403,9 @@ defmodule Ex2c do
   def compile_bytes(beam) do
     {:beam_file, module, _labeled_exports, _attributes, _compile_info, code} = :beam_disasm.file(beam)
     state = %__MODULE__{}
-    {program, state} = Enum.flat_map_reduce(code, state, fn x, acc -> Ex2c.compile_function({module, x}, acc) end)
+    {program, state} = Enum.flat_map_reduce(code, state, fn x, acc -> Beam2c.compile_function({module, x}, acc) end)
     program_string = program_to_string(state.declarations ++ program)
-    "#include \"ex2crt.h\"\n#{program_string}"
+    "#include \"beam2crt.h\"\n#{program_string}"
   end
 
   def compile_file(path) do

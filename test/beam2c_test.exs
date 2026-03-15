@@ -1,7 +1,7 @@
-defmodule Ex2cTest do
+defmodule Beam2cTest do
   use ExUnit.Case
   require Logger
-  doctest Ex2c
+  doctest Beam2c
 
   @doc """
   Compilation produces the factorial function in C which can be used as follows:
@@ -23,7 +23,7 @@ defmodule Ex2cTest do
           def factorial(n), do: n * factorial(n-1)
         end
       end
-    output = Ex2c.compile_bytes(Code.compile_quoted(quoted)[Factorial])
+    output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[Factorial])
     Logger.info(output)
   end
 
@@ -47,7 +47,7 @@ defmodule Ex2cTest do
           def gcd(a, b), do: gcd(b, Kernel.rem(a, b))
         end
       end
-    output = Ex2c.compile_bytes(Code.compile_quoted(quoted)[GCD])
+    output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[GCD])
     Logger.info(output)
   end
 
@@ -75,7 +75,7 @@ defmodule Ex2cTest do
           end
         end
       end
-    output = Ex2c.compile_bytes(Code.compile_quoted(quoted)[Bezout])
+    output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[Bezout])
     Logger.info(output)
   end
 
@@ -118,7 +118,7 @@ defmodule Ex2cTest do
           end
         end
       end
-    output = Ex2c.compile_bytes(Code.compile_quoted(quoted)[MergeSort])
+    output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[MergeSort])
     Logger.info(output)
   end
 
@@ -149,7 +149,7 @@ defmodule Ex2cTest do
           end
         end
       end
-    output = Ex2c.compile_bytes(Code.compile_quoted(quoted)[Zip])
+    output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[Zip])
     Logger.info(output)
   end
 
@@ -197,7 +197,7 @@ defmodule Ex2cTest do
           def evens(x), do: filter(x, fn x -> Kernel.rem(x, 2) == 0 end)
         end
       end
-    output = Ex2c.compile_bytes(Code.compile_quoted(quoted)[MyList])
+    output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[MyList])
     Logger.info(output)
   end
 
@@ -226,7 +226,7 @@ defmodule Ex2cTest do
           def my_literal5(), do: [1,2,3,2,1,2] ++ my_literal4()
         end
       end
-    output = Ex2c.compile_bytes(Code.compile_quoted(quoted)[MyLiteral])
+    output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[MyLiteral])
     Logger.info(output)
   end
 
@@ -240,7 +240,25 @@ defmodule Ex2cTest do
   """
   test "compile the Erlang lists module" do
     {module, beam, filename} = :code.get_object_code(:lists)
-    output = Ex2c.compile_bytes(beam)
+    output = Beam2c.compile_bytes(beam)
+    Logger.info(output)
+  end
+
+  test "for RISC Zero" do
+    quoted =
+      quote do
+        defmodule SumZero do
+          def sum([]), do: 0
+
+          def sum([hd | tl]), do: hd + sum(tl)
+
+          def main() do
+            input = GuestEnv.read()
+            GuestEnv.commit(sum(input))
+          end
+        end
+      end
+    output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[SumZero])
     Logger.info(output)
   end
 end
