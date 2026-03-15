@@ -23,15 +23,47 @@ defmodule Beam2c do
 
   def beam_label_to_c(lbl), do: "L#{lbl}"
 
-  def escape_identifier(id), do: String.replace(String.replace(String.replace(String.replace(String.replace(String.replace(String.replace(String.replace(String.replace(id, "-", "2D"), ".", "2E"), "/", "2F"), "+", "2B"), "*", "2A"), "=", "3D"), ":", "3A"), "^", "5E"), "$", "24")
+  def escape_identifier(id),
+    do:
+      String.replace(
+        String.replace(
+          String.replace(
+            String.replace(
+              String.replace(
+                String.replace(
+                  String.replace(
+                    String.replace(String.replace(id, "-", "2D"), ".", "2E"),
+                    "/",
+                    "2F"
+                  ),
+                  "+",
+                  "2B"
+                ),
+                "*",
+                "2A"
+              ),
+              "=",
+              "3D"
+            ),
+            ":",
+            "3A"
+          ),
+          "^",
+          "5E"
+        ),
+        "$",
+        "24"
+      )
 
   def bif_name_to_c(lbl), do: escape_identifier("bif_#{lbl}")
 
   def compile_label({:f, index}), do: beam_label_to_c(index)
 
-  def compile_label({module, function, arity}), do: escape_identifier("#{module}_#{function}_#{arity}")
+  def compile_label({module, function, arity}),
+    do: escape_identifier("#{module}_#{function}_#{arity}")
 
-  def compile_label({:extfunc, module, function, arity}), do: escape_identifier("#{module}_#{function}_#{arity}")
+  def compile_label({:extfunc, module, function, arity}),
+    do: escape_identifier("#{module}_#{function}_#{arity}")
 
   def label_arity({_module, _function, arity}), do: arity
 
@@ -43,69 +75,92 @@ defmodule Beam2c do
 
   def compile_literal([]), do: {:call_expr, {:symbol_expr, "make_nil"}, []}
 
-  def compile_literal([head | tail]), do: {:call_expr, {:symbol_expr, "make_list"}, [compile_literal(head), compile_literal(tail)]}
+  def compile_literal([head | tail]),
+    do: {:call_expr, {:symbol_expr, "make_list"}, [compile_literal(head), compile_literal(tail)]}
 
   def compile_literal(tuple) when is_tuple(tuple) do
     cparams =
-      [{:literal_expr, tuple_size(tuple)},
-       {:compound_literal_expr, "struct term []",
-        Enum.map(Tuple.to_list(tuple), fn x -> {:expr_initializer, Beam2c.compile_literal(x)} end)}]
+      [
+        {:literal_expr, tuple_size(tuple)},
+        {:compound_literal_expr, "struct term []",
+         Enum.map(Tuple.to_list(tuple), fn x -> {:expr_initializer, Beam2c.compile_literal(x)} end)}
+      ]
+
     {:call_expr, {:symbol_expr, "make_tuple"}, cparams}
   end
 
-  def compile_literal(nil), do: {:call_expr, {:symbol_expr, "make_atom"}, [{:literal_expr, 3}, {:literal_expr, "nil"}]}
+  def compile_literal(nil),
+    do: {:call_expr, {:symbol_expr, "make_atom"}, [{:literal_expr, 3}, {:literal_expr, "nil"}]}
 
   def compile_literal(atom) when is_atom(atom) do
     atom_string = to_string(atom)
-    {:call_expr, {:symbol_expr, "make_atom"}, [{:literal_expr, String.length(atom_string)}, {:literal_expr, atom_string}]}
+
+    {:call_expr, {:symbol_expr, "make_atom"},
+     [{:literal_expr, String.length(atom_string)}, {:literal_expr, atom_string}]}
   end
 
-  def compile_literal(val) when is_number(val), do: {:call_expr, {:symbol_expr, "make_small"}, [{:literal_expr, val}]}
+  def compile_literal(val) when is_number(val),
+    do: {:call_expr, {:symbol_expr, "make_small"}, [{:literal_expr, val}]}
 
   def compile_literal(bits) when is_bitstring(bits) do
     size = bit_size(bits)
-    size_rounded_up = (size + 7) &&& ~~~7
+    size_rounded_up = size + 7 &&& ~~~7
     padded_bits = <<bits::bitstring, 0::size(size_rounded_up - size)>>
     byte_list = :binary.bin_to_list(padded_bits)
-    byte_array = {:compound_literal_expr, "unsigned char []", Enum.map(byte_list, fn x -> {:expr_initializer, {:literal_expr, x}} end)}
+
+    byte_array =
+      {:compound_literal_expr, "unsigned char []",
+       Enum.map(byte_list, fn x -> {:expr_initializer, {:literal_expr, x}} end)}
+
     {:call_expr, {:symbol_expr, "make_bitstring"}, [{:literal_expr, size}, byte_array]}
   end
 
   def compile_literal(x) when is_function(x) do
     cfunc_decl =
-      {:function_declarator,
-       {:pointer_declarator, {:identifier_declarator, ""}}, []}
+      {:function_declarator, {:pointer_declarator, {:identifier_declarator, ""}}, []}
+
     cfunc_type = {:type_name, "struct term", cfunc_decl}
     fun_info = :erlang.fun_info(x)
     cfun_id = compile_label({fun_info[:module], fun_info[:name], fun_info[:arity]})
-    {:call_expr, {:symbol_expr, "make_fun"}, [
-    {:cast_expr, cfunc_type, {:address_of_expr, {:symbol_expr, cfun_id}}},
-    {:literal_expr, cfun_id},
-    {:literal_expr, String.length(cfun_id)},
-    {:literal_expr, fun_info[:arity]},
-    {:literal_expr, length(fun_info[:env])},
-    {:compound_literal_expr, "struct term []", Enum.map(fun_info[:env], fn x -> {:expr_initializer, compile_operand(x)} end)}]}
+
+    {:call_expr, {:symbol_expr, "make_fun"},
+     [
+       {:cast_expr, cfunc_type, {:address_of_expr, {:symbol_expr, cfun_id}}},
+       {:literal_expr, cfun_id},
+       {:literal_expr, String.length(cfun_id)},
+       {:literal_expr, fun_info[:arity]},
+       {:literal_expr, length(fun_info[:env])},
+       {:compound_literal_expr, "struct term []",
+        Enum.map(fun_info[:env], fn x -> {:expr_initializer, compile_operand(x)} end)}
+     ]}
   end
 
   def compile_literal(map) when map == %{}, do: {:call_expr, {:symbol_expr, "make_map"}, []}
 
   def compile_literal(x) when is_map(x) do
-    {:call_expr, {:symbol_expr, "put_map_assoc_nofail"}, [
-    compile_literal(%{}),
-    {:compound_literal_expr, "struct term []", Enum.map(Map.keys(x), fn x -> {:expr_initializer, Beam2c.compile_literal(x)} end)},
-    {:compound_literal_expr, "struct term []", Enum.map(Map.values(x), fn x -> {:expr_initializer, Beam2c.compile_literal(x)} end)},
-    {:literal_expr, map_size(x)}]}
+    {:call_expr, {:symbol_expr, "put_map_assoc_nofail"},
+     [
+       compile_literal(%{}),
+       {:compound_literal_expr, "struct term []",
+        Enum.map(Map.keys(x), fn x -> {:expr_initializer, Beam2c.compile_literal(x)} end)},
+       {:compound_literal_expr, "struct term []",
+        Enum.map(Map.values(x), fn x -> {:expr_initializer, Beam2c.compile_literal(x)} end)},
+       {:literal_expr, map_size(x)}
+     ]}
   end
 
-  def compile_operand({:integer, val}), do: {:call_expr, {:symbol_expr, "make_small"}, [{:literal_expr, val}]}
+  def compile_operand({:integer, val}),
+    do: {:call_expr, {:symbol_expr, "make_small"}, [{:literal_expr, val}]}
 
   def compile_operand(nil), do: compile_literal([])
 
   def compile_operand({:atom, name}), do: compile_literal(name)
 
-  def compile_operand({:x, reg}), do: {:subscript_expr, {:symbol_expr, "xs"}, {:literal_expr, reg}}
+  def compile_operand({:x, reg}),
+    do: {:subscript_expr, {:symbol_expr, "xs"}, {:literal_expr, reg}}
 
-  def compile_operand({:y, slot}), do: {:subscript_expr, {:symbol_expr, "E"}, {:literal_expr, slot + 1}}
+  def compile_operand({:y, slot}),
+    do: {:subscript_expr, {:symbol_expr, "E"}, {:literal_expr, slot + 1}}
 
   def compile_operand({:literal, literal}), do: compile_literal(literal)
 
@@ -117,11 +172,20 @@ defmodule Beam2c do
     {[{:comment_stmt, Kernel.inspect(code)}, {:goto_stmt, compile_label(fail)}], state}
   end
 
-  def compile_code(code = {:select_val, selector, fail, {:list, [value, label | rest]}}, state = %__MODULE__{}) do
+  def compile_code(
+        code = {:select_val, selector, fail, {:list, [value, label | rest]}},
+        state = %__MODULE__{}
+      ) do
     {rest, state} = compile_code({:select_val, selector, fail, {:list, rest}}, state)
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:if_stmt, {:binary_expr, :==, {:call_expr, {:symbol_expr, "cmp_exact"}, [compile_operand(selector), compile_operand(value)]}, {:literal_expr, 0}},
-      [{:goto_stmt, compile_label(label)}], rest}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:if_stmt,
+        {:binary_expr, :==,
+         {:call_expr, {:symbol_expr, "cmp_exact"},
+          [compile_operand(selector), compile_operand(value)]}, {:literal_expr, 0}},
+        [{:goto_stmt, compile_label(label)}], rest}
+     ], state}
   end
 
   def compile_code(code = {:jump, label}, state = %__MODULE__{}) do
@@ -133,34 +197,56 @@ defmodule Beam2c do
   end
 
   def compile_code(code = {:allocate, need_stack, _live}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)}, {:expr_stmt, {:binary_expr, :"-=", {:symbol_expr, "E"}, {:literal_expr, need_stack + 1}}}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:binary_expr, :"-=", {:symbol_expr, "E"}, {:literal_expr, need_stack + 1}}}
+     ], state}
   end
 
   def compile_code(code = {:allocate_heap, need_stack, _heap_need, _live}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)}, {:expr_stmt, {:binary_expr, :"-=", {:symbol_expr, "E"}, {:literal_expr, need_stack + 1}}}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:binary_expr, :"-=", {:symbol_expr, "E"}, {:literal_expr, need_stack + 1}}}
+     ], state}
   end
 
   def compile_code(code = {:deallocate, deallocate}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)}, {:expr_stmt, {:binary_expr, :"+=", {:symbol_expr, "E"}, {:literal_expr, deallocate + 1}}}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:binary_expr, :"+=", {:symbol_expr, "E"}, {:literal_expr, deallocate + 1}}}
+     ], state}
   end
 
   def compile_code(code = {:move, src, dest}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)}, {:expr_stmt, {:binary_expr, :=, compile_operand(dest), compile_operand(src)}}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:binary_expr, :=, compile_operand(dest), compile_operand(src)}}
+     ], state}
   end
 
   def compile_code(code = {:test, name, label, arguments}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, Atom.to_string(name)}, Enum.map(arguments, &Beam2c.compile_operand/1)}},
-      [compile_goto(label)], []}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:if_stmt,
+        {:not_expr,
+         {:call_expr, {:symbol_expr, Atom.to_string(name)},
+          Enum.map(arguments, &Beam2c.compile_operand/1)}}, [compile_goto(label)], []}
+     ], state}
   end
 
   def compile_code(code = {:test, name, label, src, {:list, arguments}}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)},
-      {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, Atom.to_string(name)}, [
-       compile_operand(src),
-       {:literal_expr, length(arguments)},
-       {:compound_literal_expr, "struct term []", Enum.map(arguments, fn x -> {:expr_initializer, Beam2c.compile_operand(x)} end)}]}},
-      [compile_goto(label)], []}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:if_stmt,
+        {:not_expr,
+         {:call_expr, {:symbol_expr, Atom.to_string(name)},
+          [
+            compile_operand(src),
+            {:literal_expr, length(arguments)},
+            {:compound_literal_expr, "struct term []",
+             Enum.map(arguments, fn x -> {:expr_initializer, Beam2c.compile_operand(x)} end)}
+          ]}}, [compile_goto(label)], []}
+     ], state}
   end
 
   def compile_code(code = {name = :get_list, source, head, tail}, state = %__MODULE__{}) do
@@ -169,6 +255,7 @@ defmodule Beam2c do
       {:address_of_expr, compile_operand(head)},
       {:address_of_expr, compile_operand(tail)}
     ]
+
     ccall = {:expr_stmt, {:call_expr, {:symbol_expr, Atom.to_string(name)}, cargs}}
     {[{:comment_stmt, Kernel.inspect(code)}, ccall], state}
   end
@@ -178,6 +265,7 @@ defmodule Beam2c do
       compile_operand(source),
       {:address_of_expr, compile_operand(head)}
     ]
+
     ccall = {:expr_stmt, {:call_expr, {:symbol_expr, Atom.to_string(name)}, cargs}}
     {[{:comment_stmt, Kernel.inspect(code)}, ccall], state}
   end
@@ -187,6 +275,7 @@ defmodule Beam2c do
       compile_operand(source),
       {:address_of_expr, compile_operand(tail)}
     ]
+
     ccall = {:expr_stmt, {:call_expr, {:symbol_expr, Atom.to_string(name)}, cargs}}
     {[{:comment_stmt, Kernel.inspect(code)}, ccall], state}
   end
@@ -197,6 +286,7 @@ defmodule Beam2c do
       compile_operand(tail),
       {:address_of_expr, compile_operand(dest)}
     ]
+
     ccall = {:expr_stmt, {:call_expr, {:symbol_expr, Atom.to_string(name)}, cargs}}
     {[{:comment_stmt, Kernel.inspect(code)}, ccall], state}
   end
@@ -206,100 +296,165 @@ defmodule Beam2c do
       compile_operand(src),
       {:address_of_expr, compile_operand(tail)}
     ]
+
     ccall = {:expr_stmt, {:call_expr, {:symbol_expr, Atom.to_string(name)}, cargs}}
     {[{:comment_stmt, Kernel.inspect(code)}, ccall], state}
   end
 
   def compile_code(code = {:call, arity, label}, state = %__MODULE__{}) do
     ccall = {:call_expr, {:symbol_expr, compile_label(label)}, []}
-    {[{:comment_stmt, Kernel.inspect(code)}, {:expr_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}
+     ], state}
   end
 
   def compile_code(code = {:call_only, arity, label}, state = %__MODULE__{}) do
     ccall = {:call_expr, {:symbol_expr, compile_label(label)}, []}
-    {[{:comment_stmt, Kernel.inspect(code)}, {:return_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:return_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}
+     ], state}
   end
 
   def compile_code(code = {:call_ext_only, arity, label}, state = %__MODULE__{}) do
     ccall = {:call_expr, {:symbol_expr, compile_label(label)}, []}
-    {[{:comment_stmt, Kernel.inspect(code)}, {:return_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:return_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}
+     ], state}
   end
 
   def compile_code(code = {:call_ext, arity, label}, state = %__MODULE__{}) do
     ccall = {:call_expr, {:symbol_expr, compile_label(label)}, []}
-    {[{:comment_stmt, Kernel.inspect(code)}, {:expr_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}
+     ], state}
   end
 
   def compile_code(code = {:call_last, arity, label, deallocate}, state = %__MODULE__{}) do
     ccall = {:call_expr, {:symbol_expr, compile_label(label)}, []}
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:expr_stmt, {:binary_expr, :"+=", {:symbol_expr, "E"}, {:literal_expr, deallocate + 1}}},
-     {:return_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:binary_expr, :"+=", {:symbol_expr, "E"}, {:literal_expr, deallocate + 1}}},
+       {:return_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}
+     ], state}
   end
 
   def compile_code(code = {:call_ext_last, arity, label, deallocate}, state = %__MODULE__{}) do
     ccall = {:call_expr, {:symbol_expr, compile_label(label)}, []}
-    {[{:comment_stmt, Kernel.inspect(code)},
-      {:expr_stmt, {:binary_expr, :"+=", {:symbol_expr, "E"}, {:literal_expr, deallocate + 1}}},
-      {:return_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:binary_expr, :"+=", {:symbol_expr, "E"}, {:literal_expr, deallocate + 1}}},
+       {:return_stmt, {:binary_expr, :=, compile_operand({:x, 0}), ccall}}
+     ], state}
   end
 
   def compile_code(code = {:gc_bif, name, label, _live, arguments, reg}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, bif_name_to_c(name)}, Enum.map(arguments, &Beam2c.compile_operand/1) ++ [{:address_of_expr, compile_operand(reg)}]}},
-      [compile_goto(label)], []}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:if_stmt,
+        {:not_expr,
+         {:call_expr, {:symbol_expr, bif_name_to_c(name)},
+          Enum.map(arguments, &Beam2c.compile_operand/1) ++
+            [{:address_of_expr, compile_operand(reg)}]}}, [compile_goto(label)], []}
+     ], state}
   end
 
   def compile_code(code = {:bif, name, label, arguments, reg}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, bif_name_to_c(name)}, Enum.map(arguments, &Beam2c.compile_operand/1) ++ [{:address_of_expr, compile_operand(reg)}]}},
-      [compile_goto(label)], []}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:if_stmt,
+        {:not_expr,
+         {:call_expr, {:symbol_expr, bif_name_to_c(name)},
+          Enum.map(arguments, &Beam2c.compile_operand/1) ++
+            [{:address_of_expr, compile_operand(reg)}]}}, [compile_goto(label)], []}
+     ], state}
   end
 
   def compile_code(code = {:init_yregs, {:list, regs}}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)} |
-     Enum.map(regs, fn x -> {:expr_stmt, {:binary_expr, :=, compile_operand(x), compile_operand(nil)}} end)], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)}
+       | Enum.map(regs, fn x ->
+           {:expr_stmt, {:binary_expr, :=, compile_operand(x), compile_operand(nil)}}
+         end)
+     ], state}
   end
 
   def compile_code(code = {:swap, op1, op2}, state = %__MODULE__{}) do
     {state, tmp} = gen_sym(state)
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:declaration_stmt, "struct term", [{{:identifier_declarator, tmp}, compile_operand(op1)}]},
-     {:expr_stmt, {:binary_expr, :=, compile_operand(op1), compile_operand(op2)}},
-     {:expr_stmt, {:binary_expr, :=, compile_operand(op2), {:symbol_expr, tmp}}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:declaration_stmt, "struct term",
+        [{{:identifier_declarator, tmp}, compile_operand(op1)}]},
+       {:expr_stmt, {:binary_expr, :=, compile_operand(op1), compile_operand(op2)}},
+       {:expr_stmt, {:binary_expr, :=, compile_operand(op2), {:symbol_expr, tmp}}}
+     ], state}
   end
 
   def compile_code(code = {:get_tuple_element, src, idx, dst}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)},
-    {:expr_stmt, {:binary_expr, :=, compile_operand(dst), {:subscript_expr, {:member_access_expr, {:member_access_expr, compile_operand(src), "tuple"}, "values"}, {:literal_expr, idx}}}}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt,
+        {:binary_expr, :=, compile_operand(dst),
+         {:subscript_expr,
+          {:member_access_expr, {:member_access_expr, compile_operand(src), "tuple"}, "values"},
+          {:literal_expr, idx}}}}
+     ], state}
   end
 
   def compile_code(code = {:put_tuple2, dst, {:list, elts}}, state = %__MODULE__{}) do
-    ccall = {:call_expr, {:symbol_expr, "make_tuple"}, [
-      {:literal_expr, length(elts)},
-      {:compound_literal_expr, "struct term []", Enum.map(elts, fn x -> {:expr_initializer, compile_operand(x)} end)}]}
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:expr_stmt, {:binary_expr, :=, compile_operand(dst), ccall}}], state}
+    ccall =
+      {:call_expr, {:symbol_expr, "make_tuple"},
+       [
+         {:literal_expr, length(elts)},
+         {:compound_literal_expr, "struct term []",
+          Enum.map(elts, fn x -> {:expr_initializer, compile_operand(x)} end)}
+       ]}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:binary_expr, :=, compile_operand(dst), ccall}}
+     ], state}
   end
 
   def compile_code(code = :return, state = %__MODULE__{}) do
     {[{:comment_stmt, Kernel.inspect(code)}, {:return_stmt, compile_operand({:x, 0})}], state}
   end
 
-  def compile_code(code = {:make_fun3, label, _index, _unique, dst, {:list, env}}, state = %__MODULE__{}) do
+  def compile_code(
+        code = {:make_fun3, label, _index, _unique, dst, {:list, env}},
+        state = %__MODULE__{}
+      ) do
     cfunc_decl =
-      {:function_declarator,
-       {:pointer_declarator, {:identifier_declarator, ""}}, []}
+      {:function_declarator, {:pointer_declarator, {:identifier_declarator, ""}}, []}
+
     cfunc_type = {:type_name, "struct term", cfunc_decl}
     cfun_id = compile_label(label)
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:expr_stmt, {:binary_expr, :=, compile_operand(dst), {:call_expr, {:symbol_expr, "make_fun"}, [
-       {:cast_expr, cfunc_type, {:address_of_expr, {:symbol_expr, cfun_id}}},
-       {:literal_expr, cfun_id},
-       {:literal_expr, String.length(cfun_id)},
-       {:literal_expr, label_arity(label)},
-       {:literal_expr, length(env)},
-       {:compound_literal_expr, "struct term []", Enum.map(env, fn x -> {:expr_initializer, compile_operand(x)} end)}]}}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt,
+        {:binary_expr, :=, compile_operand(dst),
+         {:call_expr, {:symbol_expr, "make_fun"},
+          [
+            {:cast_expr, cfunc_type, {:address_of_expr, {:symbol_expr, cfun_id}}},
+            {:literal_expr, cfun_id},
+            {:literal_expr, String.length(cfun_id)},
+            {:literal_expr, label_arity(label)},
+            {:literal_expr, length(env)},
+            {:compound_literal_expr, "struct term []",
+             Enum.map(env, fn x -> {:expr_initializer, compile_operand(x)} end)}
+          ]}}}
+     ], state}
   end
 
   def compile_code(code = {:call_fun, arity}, state = %__MODULE__{}) do
@@ -311,15 +466,29 @@ defmodule Beam2c do
     num_free = {:member_access_expr, fun, "num_free"}
     env = {:member_access_expr, fun, "env"}
     ptr = {:member_access_expr, fun, "ptr"}
+
     cfunc_decl =
-      {:function_declarator,
-       {:pointer_declarator, {:identifier_declarator, ""}}, []}
+      {:function_declarator, {:pointer_declarator, {:identifier_declarator, ""}}, []}
+
     cfunc_type = {:type_name, "struct term", cfunc_decl}
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:declaration_stmt, "struct term", [{{:identifier_declarator, tmp}, compile_operand({:x, arity})}]},
-     {:for_stmt, {:declaration_stmt, "int", [{{:identifier_declarator, counter}, {:literal_expr, 0}}]}, {:binary_expr, :<, counter_symbol, num_free}, {:postfix_expr, :++, counter_symbol},
-      [{:expr_stmt, {:binary_expr, :=, {:subscript_expr, xs, {:binary_expr, :+, counter_symbol, {:literal_expr, arity}}}, {:subscript_expr, env, counter_symbol}}}]},
-     {:expr_stmt, {:binary_expr, :=, compile_operand({:x, 0}), {:call_expr, {:cast_expr, cfunc_type, ptr}, []}}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:declaration_stmt, "struct term",
+        [{{:identifier_declarator, tmp}, compile_operand({:x, arity})}]},
+       {:for_stmt,
+        {:declaration_stmt, "int", [{{:identifier_declarator, counter}, {:literal_expr, 0}}]},
+        {:binary_expr, :<, counter_symbol, num_free}, {:postfix_expr, :++, counter_symbol},
+        [
+          {:expr_stmt,
+           {:binary_expr, :=,
+            {:subscript_expr, xs, {:binary_expr, :+, counter_symbol, {:literal_expr, arity}}},
+            {:subscript_expr, env, counter_symbol}}}
+        ]},
+       {:expr_stmt,
+        {:binary_expr, :=, compile_operand({:x, 0}),
+         {:call_expr, {:cast_expr, cfunc_type, ptr}, []}}}
+     ], state}
   end
 
   def compile_code(code = {:call_fun2, tag, arity, func}, state = %__MODULE__{}) do
@@ -331,23 +500,42 @@ defmodule Beam2c do
     num_free = {:member_access_expr, fun, "num_free"}
     env = {:member_access_expr, fun, "env"}
     ptr = {:member_access_expr, fun, "ptr"}
+
     cfunc_decl =
-      {:function_declarator,
-       {:pointer_declarator, {:identifier_declarator, ""}}, []}
+      {:function_declarator, {:pointer_declarator, {:identifier_declarator, ""}}, []}
+
     cfunc_type = {:type_name, "struct term", cfunc_decl}
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:declaration_stmt, "struct term", [{{:identifier_declarator, tmp}, compile_operand(func)}]},
-     {:for_stmt, {:declaration_stmt, "int", [{{:identifier_declarator, counter}, {:literal_expr, 0}}]}, {:binary_expr, :<, counter_symbol, num_free}, {:postfix_expr, :++, counter_symbol},
-      [{:expr_stmt, {:binary_expr, :=, {:subscript_expr, xs, {:binary_expr, :+, counter_symbol, {:literal_expr, arity}}}, {:subscript_expr, env, counter_symbol}}}]},
-     {:expr_stmt, {:binary_expr, :=, compile_operand({:x, 0}), {:call_expr, {:cast_expr, cfunc_type, ptr}, []}}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:declaration_stmt, "struct term",
+        [{{:identifier_declarator, tmp}, compile_operand(func)}]},
+       {:for_stmt,
+        {:declaration_stmt, "int", [{{:identifier_declarator, counter}, {:literal_expr, 0}}]},
+        {:binary_expr, :<, counter_symbol, num_free}, {:postfix_expr, :++, counter_symbol},
+        [
+          {:expr_stmt,
+           {:binary_expr, :=,
+            {:subscript_expr, xs, {:binary_expr, :+, counter_symbol, {:literal_expr, arity}}},
+            {:subscript_expr, env, counter_symbol}}}
+        ]},
+       {:expr_stmt,
+        {:binary_expr, :=, compile_operand({:x, 0}),
+         {:call_expr, {:cast_expr, cfunc_type, ptr}, []}}}
+     ], state}
   end
 
   def compile_code(code = {:trim, n, _remaining}, state = %__MODULE__{}) do
     n_literal = {:literal_expr, n}
     e_symbol = {:symbol_expr, "E"}
-    {[{:comment_stmt, Kernel.inspect(code)},
-     {:expr_stmt, {:binary_expr, :=, {:subscript_expr, e_symbol, n_literal}, {:subscript_expr, e_symbol, {:literal_expr, 0}}}},
-     {:expr_stmt, {:binary_expr, :"+=", e_symbol, n_literal}}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt,
+        {:binary_expr, :=, {:subscript_expr, e_symbol, n_literal},
+         {:subscript_expr, e_symbol, {:literal_expr, 0}}}},
+       {:expr_stmt, {:binary_expr, :"+=", e_symbol, n_literal}}
+     ], state}
   end
 
   def unweave([]), do: {[], []}
@@ -357,32 +545,50 @@ defmodule Beam2c do
     {[key | keys], [value | values]}
   end
 
-  def compile_code(code = {:put_map_assoc, label, src, dest, live, {:list, rest}}, state = %__MODULE__{}) do
+  def compile_code(
+        code = {:put_map_assoc, label, src, dest, live, {:list, rest}},
+        state = %__MODULE__{}
+      ) do
     {keys, values} = unweave(rest)
-    {[{:comment_stmt, Kernel.inspect(code)},
-      {:if_stmt, {:not_expr, {:call_expr, {:symbol_expr, "put_map_assoc"}, [
-       compile_operand(src),
-       {:address_of_expr, compile_operand(dest)},
-       {:compound_literal_expr, "struct term []", Enum.map(keys, fn x -> {:expr_initializer, Beam2c.compile_operand(x)} end)},
-       {:compound_literal_expr, "struct term []", Enum.map(values, fn x -> {:expr_initializer, Beam2c.compile_operand(x)} end)},
-       {:literal_expr, length(keys)}]}},
-       [compile_goto(label)], []}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:if_stmt,
+        {:not_expr,
+         {:call_expr, {:symbol_expr, "put_map_assoc"},
+          [
+            compile_operand(src),
+            {:address_of_expr, compile_operand(dest)},
+            {:compound_literal_expr, "struct term []",
+             Enum.map(keys, fn x -> {:expr_initializer, Beam2c.compile_operand(x)} end)},
+            {:compound_literal_expr, "struct term []",
+             Enum.map(values, fn x -> {:expr_initializer, Beam2c.compile_operand(x)} end)},
+            {:literal_expr, length(keys)}
+          ]}}, [compile_goto(label)], []}
+     ], state}
   end
 
-  def compile_code(code = {:line, _number}, state = %__MODULE__{}), do: {[{:comment_stmt, Kernel.inspect(code)}], state}
+  def compile_code(code = {:line, _number}, state = %__MODULE__{}),
+    do: {[{:comment_stmt, Kernel.inspect(code)}], state}
 
-  def compile_code(code = {:func_info, _module, _func, _arity}, state = %__MODULE__{}), do: {[{:comment_stmt, Kernel.inspect(code)}], state}
+  def compile_code(code = {:func_info, _module, _func, _arity}, state = %__MODULE__{}),
+    do: {[{:comment_stmt, Kernel.inspect(code)}], state}
 
-  def compile_code(code = {:test_heap, _need, _live}, state = %__MODULE__{}), do: {[{:comment_stmt, Kernel.inspect(code)}], state}
+  def compile_code(code = {:test_heap, _need, _live}, state = %__MODULE__{}),
+    do: {[{:comment_stmt, Kernel.inspect(code)}], state}
 
   def compile_code(code = {:case_end, op}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)},
-      {:expr_stmt, {:call_expr, {:symbol_expr, "case_end"}, [Beam2c.compile_operand(op)]}}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:call_expr, {:symbol_expr, "case_end"}, [Beam2c.compile_operand(op)]}}
+     ], state}
   end
 
   def compile_code(code = {:badmatch, op}, state = %__MODULE__{}) do
-    {[{:comment_stmt, Kernel.inspect(code)},
-      {:expr_stmt, {:call_expr, {:symbol_expr, "badmatch"}, [Beam2c.compile_operand(op)]}}], state}
+    {[
+       {:comment_stmt, Kernel.inspect(code)},
+       {:expr_stmt, {:call_expr, {:symbol_expr, "badmatch"}, [Beam2c.compile_operand(op)]}}
+     ], state}
   end
 
   def emit_declaration(state = %__MODULE__{}, statement) do
@@ -391,19 +597,27 @@ defmodule Beam2c do
 
   def compile_function({module, {:function, name, arity, entry, code}}, state) do
     cfunc_decl =
-      {:function_declarator,
-       {:identifier_declarator, compile_label({module, name, arity})}, []}
+      {:function_declarator, {:identifier_declarator, compile_label({module, name, arity})}, []}
+
     cfunc_type = {:type_name, "struct term", cfunc_decl}
     {cfunc_body, state} = Enum.flat_map_reduce(code, state, &Beam2c.compile_code/2)
     state = emit_declaration(state, {:declaration_stmt, "struct term", [{cfunc_decl, nil}]})
-    {[{:comment_stmt, Kernel.inspect({:function, name, arity, entry, []})},
-     {:function_stmt, specifier(cfunc_type), cfunc_decl, cfunc_body}], state}
+
+    {[
+       {:comment_stmt, Kernel.inspect({:function, name, arity, entry, []})},
+       {:function_stmt, specifier(cfunc_type), cfunc_decl, cfunc_body}
+     ], state}
   end
 
   def compile_bytes(beam) do
-    {:beam_file, module, _labeled_exports, _attributes, _compile_info, code} = :beam_disasm.file(beam)
+    {:beam_file, module, _labeled_exports, _attributes, _compile_info, code} =
+      :beam_disasm.file(beam)
+
     state = %__MODULE__{}
-    {program, state} = Enum.flat_map_reduce(code, state, fn x, acc -> Beam2c.compile_function({module, x}, acc) end)
+
+    {program, state} =
+      Enum.flat_map_reduce(code, state, fn x, acc -> Beam2c.compile_function({module, x}, acc) end)
+
     program_string = program_to_string(state.declarations ++ program)
     "#include \"beam2crt.h\"\n#{program_string}"
   end
@@ -473,7 +687,8 @@ defmodule Beam2c do
   end
 
   def cexpr_to_string({:compound_literal_expr, type, initializer_list}) do
-    "(" <> type <> ") " <> cinitialization_to_string({:initializer_list_initializer, initializer_list})
+    "(" <>
+      type <> ") " <> cinitialization_to_string({:initializer_list_initializer, initializer_list})
   end
 
   # Convert C initialization to string
@@ -498,6 +713,7 @@ defmodule Beam2c do
       for des <- designators, reduce: "" do
         str -> str <> "." <> des
       end
+
     str <> " = " <> cinitialization_to_string(initializer)
   end
 
@@ -541,7 +757,9 @@ defmodule Beam2c do
 
   # Convert C statement to string
 
-  def stmt_to_string({:if_stmt, condition, cons, [{:comment_stmt, _comment}, alt = {:if_stmt, _, _, _}]}) do
+  def stmt_to_string(
+        {:if_stmt, condition, cons, [{:comment_stmt, _comment}, alt = {:if_stmt, _, _, _}]}
+      ) do
     str = "if(" <> cexpr_to_string(condition) <> ") {\n"
 
     str =
@@ -582,11 +800,16 @@ defmodule Beam2c do
     do: cexpr_to_string(expr) <> ";\n"
 
   def stmt_to_string({:for_stmt, init_stmt, cond_expr, expr_expr, body}) do
-    str = "for(" <> String.replace(stmt_to_string(init_stmt), "\n", " ") <> cexpr_to_string(cond_expr) <> "; " <> cexpr_to_string(expr_expr) <> ") {\n"
+    str =
+      "for(" <>
+        String.replace(stmt_to_string(init_stmt), "\n", " ") <>
+        cexpr_to_string(cond_expr) <> "; " <> cexpr_to_string(expr_expr) <> ") {\n"
+
     str =
       for stmt <- body, reduce: str do
         str -> str <> stmt_to_string(stmt)
       end
+
     str <> "}\n"
   end
 

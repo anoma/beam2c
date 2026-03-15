@@ -20,9 +20,10 @@ defmodule Beam2cTest do
           # Base case
           def factorial(0), do: 1
           # Recursive case
-          def factorial(n), do: n * factorial(n-1)
+          def factorial(n), do: n * factorial(n - 1)
         end
       end
+
     output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[Factorial])
     Logger.info(output)
   end
@@ -47,6 +48,7 @@ defmodule Beam2cTest do
           def gcd(a, b), do: gcd(b, Kernel.rem(a, b))
         end
       end
+
     output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[GCD])
     Logger.info(output)
   end
@@ -71,10 +73,11 @@ defmodule Beam2cTest do
           # Recursive case
           def bezout(a, b) do
             {e, f, g} = bezout(Kernel.rem(b, a), a)
-            {e, g - (f * Kernel.div(b, a)), f}
+            {e, g - f * Kernel.div(b, a), f}
           end
         end
       end
+
     output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[Bezout])
     Logger.info(output)
   end
@@ -99,8 +102,8 @@ defmodule Beam2cTest do
         defmodule MergeSort do
           # Extract slice from list
           def slice(a, l, l), do: []
-          def slice([a | as], 0, u), do: [a | slice(as, 0, u-1)]
-          def slice([a | as], l, u), do: slice(as, l-1, u-1)
+          def slice([a | as], 0, u), do: [a | slice(as, 0, u - 1)]
+          def slice([a | as], l, u), do: slice(as, l - 1, u - 1)
           # Merge two ordered sequences
           def merge(a, []), do: a
           def merge([], b), do: b
@@ -118,6 +121,7 @@ defmodule Beam2cTest do
           end
         end
       end
+
     output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[MergeSort])
     Logger.info(output)
   end
@@ -143,12 +147,14 @@ defmodule Beam2cTest do
           def zip([a | as], [b | bs]), do: [{a, b} | zip(as, bs)]
           # Base case
           def unzip([]), do: {[], []}
+
           def unzip([{a, b} | abs]) do
             {as, bs} = unzip(abs)
             {[a | as], [b | bs]}
           end
         end
       end
+
     output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[Zip])
     Logger.info(output)
   end
@@ -186,17 +192,25 @@ defmodule Beam2cTest do
           def fold_right([x | xs], acc, f), do: f.(x, fold_right(xs, acc, f))
           # Filter elements of a list
           def filter([], pred), do: []
+
           def filter([x | xs], pred) do
             xs = filter(xs, pred)
-            if pred.(x) do [x | xs] else xs end
+
+            if pred.(x) do
+              [x | xs]
+            else
+              xs
+            end
           end
+
           # Use the higher order functions
-          def multiply(x, y), do: map(x, fn x -> y*x end)
+          def multiply(x, y), do: map(x, fn x -> y * x end)
           def sum_left(x), do: fold_left(x, 0, &(&1 + &2))
-          def sum_right(x), do: fold_right(x, 0, fn x, y -> x+y end)
+          def sum_right(x), do: fold_right(x, 0, fn x, y -> x + y end)
           def evens(x), do: filter(x, fn x -> Kernel.rem(x, 2) == 0 end)
         end
       end
+
     output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[MyList])
     Logger.info(output)
   end
@@ -220,12 +234,13 @@ defmodule Beam2cTest do
       quote do
         defmodule MyLiteral do
           def my_literal(), do: [%{:hello => 100, :bye => 2}]
-          def my_literal2(), do: [%{:hello => 100, :bye => fn x -> 2*x+1 end}]
-          def my_literal4(), do: [2,1,2]
-          def my_literal3(), do: [1,2,3,2,1,2] -- my_literal4()
-          def my_literal5(), do: [1,2,3,2,1,2] ++ my_literal4()
+          def my_literal2(), do: [%{:hello => 100, :bye => fn x -> 2 * x + 1 end}]
+          def my_literal4(), do: [2, 1, 2]
+          def my_literal3(), do: [1, 2, 3, 2, 1, 2] -- my_literal4()
+          def my_literal5(), do: [1, 2, 3, 2, 1, 2] ++ my_literal4()
         end
       end
+
     output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[MyLiteral])
     Logger.info(output)
   end
@@ -258,6 +273,7 @@ defmodule Beam2cTest do
           end
         end
       end
+
     output = Beam2c.compile_bytes(Code.compile_quoted(quoted)[SumZero])
     Logger.info(output)
   end
